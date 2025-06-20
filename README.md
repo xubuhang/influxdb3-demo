@@ -9,11 +9,14 @@
 - 🌐 **Web界面**: 现代化的响应式Web界面，支持实时数据展示
 - ⚡ **高性能**: 基于InfluxDB v3的高性能时序数据库
 - 🎯 **易用性**: 直观的操作界面，支持模板快速生成数据
+- 🔄 **动态刷新**: 支持动态刷新测量名称列表
+- 📋 **智能解析**: 自动解析查询结果中的时间戳、标签和字段
 
 ## 技术栈
 
 - **后端**: Spring Boot 3.2.0
-- **数据库**: InfluxDB v3
+- **数据库**: InfluxDB v3 (IOx架构)
+- **客户端**: influxdb3-java 1.1.0
 - **前端**: Bootstrap 5 + Thymeleaf
 - **构建工具**: Maven
 - **Java版本**: 17+
@@ -47,7 +50,41 @@ influxdb:
   database: your-database
 ```
 
-### 4. 运行应用
+### 4. 重要：JVM参数配置
+
+由于使用了Apache Arrow库，需要添加特定的JVM参数来避免内存访问错误：
+
+#### 方法1：使用提供的启动脚本
+
+**Windows:**
+```bash
+start.bat
+```
+
+**Linux/Mac:**
+```bash
+./start.sh
+```
+
+#### 方法2：手动添加JVM参数
+
+```bash
+java --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED \
+     --add-opens=java.base/sun.nio.ch=org.apache.arrow.memory.core,ALL-UNNAMED \
+     -jar target/influxdb3-demo-1.0.0.jar
+```
+
+#### 方法3：IDE配置
+
+在IntelliJ IDEA中：
+1. Run → Edit Configurations
+2. 在VM options中添加：
+```
+--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+--add-opens=java.base/sun.nio.ch=org.apache.arrow.memory.core,ALL-UNNAMED
+```
+
+### 5. 运行应用
 
 ```bash
 # 克隆项目
@@ -57,18 +94,23 @@ cd influxdb3-demo
 # 编译项目
 mvn clean compile
 
-# 运行应用
+# 运行应用（使用启动脚本）
+./start.sh  # Linux/Mac
+start.bat   # Windows
+
+# 或者直接使用Maven（需要先配置JVM参数）
 mvn spring-boot:run
 ```
 
 应用将在 `http://localhost:8080` 启动。
 
-### 5. 使用应用
+### 6. 使用应用
 
 1. **访问主页**: 打开浏览器访问 `http://localhost:8080`
 2. **生成示例数据**: 在主页点击快速操作按钮生成CPU、内存或温度数据
 3. **查询数据**: 点击"数据查询"菜单，设置查询条件查看数据
 4. **批量生成**: 点击"数据生成"菜单，自定义生成更多数据
+5. **刷新测量列表**: 在查询页面点击"刷新测量列表"按钮
 
 ## 项目结构
 
@@ -82,8 +124,7 @@ src/
 │   │   │   └── InfluxDBController.java      # 控制器类
 │   │   ├── model/
 │   │   │   ├── MeasurementData.java         # 测量数据模型
-│   │   │   ├── QueryResult.java             # 查询结果模型
-│   │   │   └── BatchDataRequest.java        # 批量数据请求模型
+│   │   │   └── QueryResult.java             # 查询结果模型
 │   │   ├── service/
 │   │   │   └── InfluxDBService.java         # InfluxDB服务类
 │   │   └── Influxdb3DemoApplication.java    # 主应用类
@@ -93,6 +134,8 @@ src/
 │       │   ├── query.html                   # 数据查询页面
 │       │   └── generate.html                # 数据生成页面
 │       └── application.yml                  # 应用配置文件
+├── start.bat                                # Windows启动脚本
+└── start.sh                                 # Linux/Mac启动脚本
 ```
 
 ## API接口
@@ -119,7 +162,16 @@ Content-Type: application/json
 ### 数据查询
 
 ```http
-GET /api/query?measurement=cpu_usage&startTime=2024-01-01T00:00:00Z&endTime=2024-01-01T23:59:59Z&limit=100
+POST /api/query
+Content-Type: application/x-www-form-urlencoded
+
+measurement=cpu_usage&startTime=2024-01-01T00:00:00Z&endTime=2024-01-01T23:59:59Z&limit=100
+```
+
+### 获取测量名称列表
+
+```http
+GET /api/measurements
 ```
 
 ### 批量数据生成
@@ -167,6 +219,22 @@ POST /api/generate-sample?type=cpu
 }
 ```
 
+### QueryResult (查询结果)
+
+```java
+{
+  "timestamp": "2024-01-01T12:00:00Z",  // 时间戳
+  "tags": {                             // 标签
+    "host": "server-01",
+    "cpu": "cpu0"
+  },
+  "fields": {                           // 字段值
+    "usage_percent": 75.5,
+    "temperature": 45.2
+  }
+}
+```
+
 ### 常用测量类型
 
 - `cpu_usage`: CPU使用率数据
@@ -175,6 +243,30 @@ POST /api/generate-sample?type=cpu
 - `network_traffic`: 网络流量数据
 - `temperature`: 温度传感器数据
 - `humidity`: 湿度传感器数据
+
+## InfluxDB v3 特性
+
+### 查询语法
+
+本应用使用InfluxDB v3的SQL语法：
+
+```sql
+-- 获取所有表名（测量名称）
+SHOW TABLES
+
+-- 查询数据
+SELECT * FROM cpu_usage 
+WHERE time >= '2024-01-01T00:00:00Z' 
+  AND time <= '2024-01-01T23:59:59Z'
+ORDER BY time DESC 
+LIMIT 100
+```
+
+### 架构变化
+
+- 测量名称 = 表名
+- 使用SQL语法替代InfluxQL
+- 支持标准SQL查询
 
 ## 开发指南
 
@@ -199,6 +291,35 @@ POST /api/generate-sample?type=cpu
 1. **连接失败**: 检查InfluxDB URL和Token配置
 2. **权限错误**: 确保API Token有足够的权限
 3. **数据格式错误**: 检查时间戳格式和字段类型
+4. **JVM参数错误**: 确保添加了Apache Arrow所需的JVM参数
+5. **编译错误**: 确保使用Java 17编译，Java 8不支持Spring Boot 3.x
+
+### 错误解决
+
+#### Apache Arrow MemoryUtil 错误
+```
+java.lang.ExceptionInInitializerError: java.lang.RuntimeException: java.lang.reflect.InaccessibleObjectException
+```
+
+**解决方案**: 添加JVM参数
+```
+--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+--add-opens=java.base/sun.nio.ch=org.apache.arrow.memory.core,ALL-UNNAMED
+```
+
+#### 查询结果解析错误
+```
+java.time.format.DateTimeParseException: Text 'cpu0' could not be parsed at index 0
+```
+
+**解决方案**: 已修复，现在会自动识别字段类型并正确解析
+
+#### 测量名称下拉列表为空
+```
+Error during planning: table 'public.iox._measurements' not found
+```
+
+**解决方案**: 已修复，现在使用正确的 `SHOW TABLES` 语法
 
 ### 日志查看
 
@@ -210,6 +331,17 @@ logging:
     com.example.influxdb3demo: DEBUG
     com.influxdb: DEBUG
 ```
+
+## 更新日志
+
+### v1.0.0 (2024-06-20)
+- ✅ 修复查询结果解析错误
+- ✅ 修复测量名称获取问题
+- ✅ 添加JVM参数配置说明
+- ✅ 改进错误处理和日志记录
+- ✅ 添加动态刷新测量列表功能
+- ✅ 更新API接口为POST请求
+- ✅ 优化前端用户体验
 
 ## 贡献指南
 
