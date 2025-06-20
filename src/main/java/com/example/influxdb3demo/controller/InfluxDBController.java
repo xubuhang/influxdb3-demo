@@ -192,16 +192,47 @@ public class InfluxDBController {
     public Map<String, Object> generateData(
             @RequestParam String measurement,
             @RequestParam(required = false) Map<String, String> tags,
-            @RequestParam Map<String, Object> baseFields,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
-            @RequestParam(defaultValue = "100") int dataPoints) {
+            @RequestParam(defaultValue = "100") int dataPoints,
+            HttpServletRequest request) {
         
         Map<String, Object> response = new HashMap<>();
         
         try {
             Instant start = startTime.atZone(ZoneId.systemDefault()).toInstant();
             Instant end = endTime.atZone(ZoneId.systemDefault()).toInstant();
+            
+            // 手动解析 baseFields 参数，避免 Spring 自动映射的问题
+            Map<String, Object> baseFields = new HashMap<>();
+            Map<String, String[]> parameterMap = request.getParameterMap();
+            
+            for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
+                String key = entry.getKey();
+                if (key.startsWith("baseFields[") && key.endsWith("]") && entry.getValue().length > 0) {
+                    // 提取字段名，去掉 baseFields[ 和 ]
+                    String fieldName = key.substring(12, key.length() - 1);
+                    String value = entry.getValue()[0];
+                    
+                    if (fieldName != null && !fieldName.isEmpty() && value != null && !value.isEmpty()) {
+                        // 尝试转换为数字类型
+                        try {
+                            if (value.contains(".")) {
+                                // 尝试转换为 Double
+                                baseFields.put(fieldName, Double.parseDouble(value));
+                            } else {
+                                // 尝试转换为 Long
+                                baseFields.put(fieldName, Long.parseLong(value));
+                            }
+                        } catch (NumberFormatException e) {
+                            // 如果转换失败，保持为字符串
+                            baseFields.put(fieldName, value);
+                        }
+                    }
+                }
+            }
+            
+            log.info("解析的字段: {}", baseFields);
             
             List<MeasurementData> mockData = influxDBService.generateMockData(
                     measurement, tags, baseFields, start, end, dataPoints);
