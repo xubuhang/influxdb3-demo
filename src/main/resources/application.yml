@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: influxdb3-demo
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+    encoding: UTF-8
+    mode: HTML
+
+# InfluxDB v3 配置 (influxdb3-java)
+influxdb:
+  host: http://localhost:8181
+  token: apiv3_fMhNcINy6nOHdgks5e_n3TCqdbDwvUBVXArKONEYxJtjBDwahD4y0SkHHmf8-JSNtt612HfJG6fPLAe1FT4Pmw
+  database: sensors
+
+# 日志配置
+logging:
+  level:
+    com.example.influxdb3demo: DEBUG
+    com.influxdb: DEBUG
+
+# JVM 参数配置（用于 IDEA）
+# 在 IDEA 运行配置的 VM options 中添加：
+# --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# --add-opens=java.base/sun.nio.ch=org.apache.arrow.memory.core,ALL-UNNAMED 
